@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Daily Tasks</title>
+<style>
+  :root { color-scheme: dark; --bg:#050505; --panel:#080808; --border:#262626; --muted:#a3a3a3; --green:#00c878; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:8px; background:transparent; color:#f5f5f5; font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .app { width:100%; min-height:320px; border:1px solid var(--border); border-radius:15px; background:var(--bg); padding:14px; }
+  .top { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; }
+  .heading { font-size:16px; font-weight:650; letter-spacing:.02em; }
+  .date { color:var(--green); background:#002617; border-radius:20px; padding:4px 11px; font-size:12px; white-space:nowrap; }
+  .pager { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px; padding-bottom:18px; border-bottom:1px solid #1e1e1e; }
+  .pager button { border:1px solid #383838; color:#d4d4d4; background:transparent; border-radius:22px; padding:6px 13px; font-size:13px; cursor:pointer; width:max-content; }
+  .pager button:last-child { justify-self:end; }
+  .pager button:disabled { opacity:.3; cursor:not-allowed; }
+  .day { font-size:16px; font-weight:650; text-align:center; }
+  .section-title { margin:27px 0 15px; font-size:16px; font-weight:650; }
+  .tasks { display:grid; gap:8px; }
+  .task { display:flex; align-items:center; gap:11px; min-height:24px; font-size:16px; line-height:1.35; }
+  .task input { appearance:none; width:22px; height:22px; flex:0 0 22px; border:1px solid #666; border-radius:50%; background:transparent; margin:0; cursor:pointer; position:relative; }
+  .task input:checked { background:var(--green); border-color:var(--green); }
+  .task input:checked::after { content:"✓"; color:#001b10; position:absolute; font-size:15px; font-weight:800; left:4px; top:0px; }
+  .task.done span { color:#8b8b8b; text-decoration:line-through; }
+  .task span { overflow-wrap:anywhere; }
+  .task .remove { margin-left:auto; color:#777; border:0; background:none; cursor:pointer; font-size:18px; opacity:0; }
+  .task:hover .remove { opacity:1; }
+  .add { margin-top:15px; display:flex; gap:8px; }
+  .add input { min-width:0; flex:1; border:1px solid #303030; border-radius:9px; padding:9px 11px; background:#101010; color:#f5f5f5; font-size:14px; outline:none; }
+  .add button { border:1px solid #383838; border-radius:9px; padding:0 13px; background:#171717; color:#eee; cursor:pointer; }
+  .footer { margin-top:26px; display:flex; justify-content:space-between; color:#b5b5b5; font-size:12px; gap:8px; }
+  .progress { color:#999; }
+  @media (max-width:480px) { .app{padding:12px}.task{font-size:14px}.date{font-size:11px}.heading{font-size:14px} }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div class="heading">DAILY TASKS</div>
+    <div class="date" id="dateLabel"></div>
+  </div>
+  <div class="pager">
+    <button id="prev">← Previous</button>
+    <div class="day" id="dayLabel">Day 01</div>
+    <button id="next">Next →</button>
+  </div>
+  <div class="section-title">Today's tasks</div>
+  <div class="tasks" id="tasks"></div>
+  <form class="add" id="addForm">
+    <input id="newTask" type="text" placeholder="Add a task for this day..." autocomplete="off" />
+    <button type="submit">+ Add</button>
+  </form>
+  <div class="footer">
+    <span id="pageLabel">Page 1 of your daily task history</span>
+    <span class="progress" id="progressLabel"></span>
+  </div>
+</div>
+<script>
+(() => {
+  const STORAGE_KEY = "notion-daily-tasks-v1";
+  const today = new Date(); today.setHours(0,0,0,0);
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const fromISO = s => { const [y,m,d]=s.split("-").map(Number); return new Date(y,m-1,d); };
+  const fmt = d => new Intl.DateTimeFormat("en-GB",{day:"2-digit",month:"short",year:"numeric"}).format(d);
+  const dayDiff = d => Math.round((d-today)/86400000);
+  let selected = iso(today);
+  let data = {};
+  try { data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); } catch {}
+  const seed = [
+    "Practice Spring Boot CRUD",
+    "Apply for 5 jobs",
+    "English speaking practice",
+    "Revise Java DSA"
+  ];
+  function record(key) {
+    if (!data[key]) data[key] = { tasks: (key===iso(today) ? seed : []).map((text,i)=>({id:`seed-${i}`,text,done:false})) };
+    return data[key];
+  }
+  function save(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+  function render(){
+    const date=fromISO(selected), r=record(selected);
+    document.getElementById("dateLabel").textContent=fmt(date);
+    const keys=Object.keys(data).sort();
+    const index=keys.indexOf(selected);
+    document.getElementById("dayLabel").textContent=`Day ${String(Math.max(1,index+1)).padStart(2,"0")}`;
+    document.getElementById("prev").disabled=false;
+    document.getElementById("next").disabled=selected===iso(today);
+    const list=document.getElementById("tasks"); list.innerHTML="";
+    r.tasks.forEach((t,i)=>{
+      const label=document.createElement("label"); label.className="task"+(t.done?" done":"");
+      const cb=document.createElement("input"); cb.type="checkbox"; cb.checked=!!t.done;
+      cb.addEventListener("change",()=>{t.done=cb.checked;save();render();});
+      const span=document.createElement("span"); span.textContent=t.text;
+      const del=document.createElement("button"); del.type="button";del.className="remove";del.textContent="×";del.setAttribute("aria-label","Remove task");
+      del.addEventListener("click",()=>{r.tasks.splice(i,1);save();render();});
+      label.append(cb,span,del); list.append(label);
+    });
+    const done=r.tasks.filter(t=>t.done).length;
+    document.getElementById("progressLabel").textContent=`${done}/${r.tasks.length} completed`;
+    document.getElementById("pageLabel").textContent=`Page ${Math.max(1,index+1)} of your daily task history`;
+  }
+  document.getElementById("prev").addEventListener("click",()=>{const d=fromISO(selected);d.setDate(d.getDate()-1);selected=iso(d);render();});
+  document.getElementById("next").addEventListener("click",()=>{const d=fromISO(selected);d.setDate(d.getDate()+1);if(d<=today){selected=iso(d);render();}});
+  document.getElementById("addForm").addEventListener("submit",e=>{
+    e.preventDefault();const input=document.getElementById("newTask");const text=input.value.trim();if(!text)return;
+    record(selected).tasks.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()),text,done:false});input.value="";save();render();
+  });
+  save();render();
+})();
+</script>
+</body>
+</html>
